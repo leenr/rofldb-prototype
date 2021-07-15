@@ -56,7 +56,7 @@ namespace priv {
         [[nodiscard]] std::tuple<const Node*, const Record*> approxGet(const Key& key) const;
     };
 
-    class DataHeap : public Utils::Mmaped<uint64_t> {
+    class DataDump : public Utils::Mmaped<uint64_t> {
     public:
         [[nodiscard]] inline Blob getData(std::size_t offset) const;
     };
@@ -72,7 +72,7 @@ protected:
     };
 
     const priv::Tree* tree;
-    const priv::DataHeap* dataHeap;
+    const priv::DataDump* dataDump;
 
 public:
     DbReader(std::byte* memAddress, std::size_t memLength);

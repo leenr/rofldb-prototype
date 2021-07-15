@@ -77,7 +77,7 @@ std::tuple<const priv::Node*, const priv::Record*> priv::Tree::approxGet(const K
     return {nullptr, nullptr};
 }
 
-Blob priv::DataHeap::getData(std::size_t offset) const {
+Blob priv::DataDump::getData(std::size_t offset) const {
     auto payloadReader = getPayloadReader();
     payloadReader.skip(offset);
     auto length = payloadReader.read<uint32_t>();
@@ -96,7 +96,7 @@ DbReader::DbReader(std::byte* memAddress, std::size_t memLength) {
     }
 
     tree = payloadReader.read<const priv::Tree>();
-    dataHeap = payloadReader.read<const priv::DataHeap>();
+    dataDump = payloadReader.read<const priv::DataDump>();
 }
 
 std::optional<Blob> DbReader::get(const Key& key) const {
@@ -110,7 +110,7 @@ std::optional<Blob> DbReader::get(const Key& key) const {
         return std::nullopt;
     }
 
-    return dataHeap->getData(std::get<priv::DataLink>(contentLink).offset);
+    return dataDump->getData(std::get<priv::DataLink>(contentLink).offset);
 }
 
 std::optional<Blob> DbReader::get(const std::string& key) const {
