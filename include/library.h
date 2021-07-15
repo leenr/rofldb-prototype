@@ -51,7 +51,7 @@ namespace priv {
         [[nodiscard]] inline const Record* approxGet(const Key& key) const;
     };
 
-    class Tree : public Utils::Mmaped<uint64_t> {
+    class Tree : public Utils::Mmaped<uint32_t> {
     public:
         [[nodiscard]] std::tuple<const Node*, const Record*> approxGet(const Key& key) const;
     };
