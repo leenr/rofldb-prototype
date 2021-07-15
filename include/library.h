@@ -39,10 +39,7 @@ namespace priv {
     private:
         typedef uint16_t KeyLengthType;
 
-        enum Type : uint8_t {
-            DATA = 0,
-            NODE = 1
-        };
+        enum Type : uint8_t { DATA = 0, NODE = 1 };
 
     public:
         [[nodiscard]] inline Key getKey() const;
@@ -51,12 +48,12 @@ namespace priv {
 
     class Node : public Utils::Mmaped<uint32_t> {
     public:
-        [[nodiscard]] inline const Record* seekLte(const Key& key) const;
+        [[nodiscard]] inline const Record* approxGet(const Key& key) const;
     };
 
     class Tree : public Utils::Mmaped<uint64_t> {
     public:
-        [[nodiscard]] std::tuple<const Node*, const Record*> seekLte(const Key& key) const;
+        [[nodiscard]] std::tuple<const Node*, const Record*> approxGet(const Key& key) const;
     };
 
     class DataHeap : public Utils::Mmaped<uint64_t> {

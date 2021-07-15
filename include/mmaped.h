@@ -88,6 +88,7 @@ namespace RoflDb::Utils {
 
     protected:
         static constexpr std::size_t PAYLOAD_OFFSET = sizeof(SizeT);
+
         [[nodiscard]] inline PayloadReader getPayloadReader() const {
             return PayloadReader((std::byte*)this + PAYLOAD_OFFSET, getSize());
         }

@@ -7,19 +7,13 @@
 namespace RoflDb {
 
 std::strong_ordering Key::operator<=>(const Key& other) const {
-    int cmpResult = std::memcmp(other.memAddress, this->memAddress, std::min(other.length, this->length));
+    int cmpResult = std::memcmp(this->memAddress, other.memAddress, std::min(other.length, this->length));
     if (cmpResult > 0) {
         return std::strong_ordering::greater;
     } else if (cmpResult < 0) {
         return std::strong_ordering::less;
     } else [[ unlikely ]] {
-        if (other.length > this->length) {
-            return std::strong_ordering::greater;
-        } else if (other.length > this->length) {
-            return std::strong_ordering::less;
-        } else [[ unlikely ]] {
-            return std::strong_ordering::equal;
-        }
+        return this->length <=> other.length;
     }
 }
 
@@ -50,18 +44,18 @@ std::variant<priv::DataLink, priv::NodeLink> priv::Record::getContentLink() cons
     }
 }
 
-const priv::Record* priv::Node::seekLte(const Key& key) const {
+const priv::Record* priv::Node::approxGet(const Key& key) const {
     auto payloadReader = getPayloadReader();
     while (payloadReader) {
         auto* record = payloadReader.read<const Record>();
-        if (record->getKey() <= key) {
+        if (record->getKey() >= key) {
             return record;
         }
     }
     return nullptr;
 }
 
-std::tuple<const priv::Node*, const priv::Record*> priv::Tree::seekLte(const Key& key) const {
+std::tuple<const priv::Node*, const priv::Record*> priv::Tree::approxGet(const Key& key) const {
     auto payloadReader = getPayloadReader();
     auto nodeOffset = payloadReader.read<uint32_t>();
 
@@ -71,7 +65,7 @@ std::tuple<const priv::Node*, const priv::Record*> priv::Tree::seekLte(const Key
     }
 
     auto* node = Utils::PayloadReader(payloadReader).read<const Node>(nodeOffset);
-    while (const Record* record = node->seekLte(key)) {
+    while (const Record* record = node->approxGet(key)) {
         const auto contentLink = record->getContentLink();
         if (std::holds_alternative<DataLink>(contentLink)) [[unlikely]] {
             return {node, record};
@@ -106,7 +100,7 @@ DbReader::DbReader(std::byte* memAddress, std::size_t memLength) {
 }
 
 std::optional<Blob> DbReader::get(const Key& key) const {
-    auto [_, record] = tree->seekLte(key);
+    auto [_, record] = tree->approxGet(key);
     if (record == nullptr || static_cast<const Key>(record->getKey()) != key) {
         return std::nullopt;
     }
