@@ -28,11 +28,12 @@ int main(int argc, char* argv[]) {
     fclose(file);
 
     RoflDb::DbReader dbReader(data, fileStat.st_size);
-    for (const auto& key : {"tese", "404", "test"}) {
+    for (long long i = 0; i < 1000000; i++) {
+        auto key = "key" + std::to_string(i);
         if (auto res = dbReader.get(key)) {
             std::cerr << "Key '" << key << "' found: " << std::string(reinterpret_cast<const char*>(res->get()), res->size()) << "\n";
         } else {
-            std::cerr << "Not found key '" << key << "'!\n";
+//            std::cerr << "Not found key '" << key << "'!\n";
         }
     }
     return 0;

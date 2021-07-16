@@ -56,7 +56,8 @@ namespace RoflDb::Utils {
         template<class SkipT>
         inline std::byte* skip() {
             if constexpr (is_mmaped<SkipT>()) {
-                return skip(sizeof(SkipT) + ((SkipT*)address)->getSize());
+                auto size = ((SkipT*)address)->getSize();
+                return skip(sizeof(size) + size);
             } else {
                 return skip(sizeof(SkipT));
             }
@@ -64,7 +65,7 @@ namespace RoflDb::Utils {
 
         inline std::byte* skip(std::size_t bytes) {
 #if ROFLDB_SECURITY
-            if (bytes > remaining) [[ unlikely ]] {
+            if (bytes > remaining) [[unlikely]] {
                 throw Exceptions::data_corrupted_error("Read out of bounds");
             }
 #endif
