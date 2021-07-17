@@ -9,56 +9,61 @@
 #include "char_vector.h"
 #include "mmaped.h"
 
+
 namespace RoflDb {
 
 struct Key : public Utils::ZeroCopyCharVector {
 public:
+    using SizeType = uint16_t;
+
     Key(const std::byte* memAddress, std::size_t length) : ZeroCopyCharVector(memAddress, length) {};
     [[nodiscard]] inline std::strong_ordering operator<=>(const Key& other) const;
     [[nodiscard]] inline bool operator==(const Key& other) const;
 };
 
-struct Blob : public Utils::ZeroCopyCharVector {
+
+struct Value : public Utils::ZeroCopyCharVector {
 public:
-    Blob(const std::byte* memAddress, std::size_t length) : ZeroCopyCharVector(memAddress, length) {};
+    using SizeType = uint32_t;
+
+    Value(const std::byte* memAddress, std::size_t length) : ZeroCopyCharVector(memAddress, length) {};
 };
 
+
 namespace priv {
-    struct DataLink {
+    class ValueCollection : public Utils::Mmaped<ValueCollection, uint64_t> {
     public:
-        uint64_t offset;
-        explicit DataLink(uint64_t offset) : offset(offset) {}
+        using ValueOffsetType = SizeType;
+
+        [[nodiscard]] inline Value getByOffset(ValueOffsetType offset) const;
     };
 
-    struct NodeLink {
-        uint32_t offset;
-        explicit NodeLink(uint32_t offset) : offset(offset) {}
-    };
-
-    class Record : public Utils::Mmaped<uint16_t> {
-    private:
-        typedef uint16_t KeyLengthType;
-
-        enum Type : uint8_t { DATA = 0, NODE = 1 };
-
+    class Tree : public Utils::Mmaped<Tree, uint32_t> {
     public:
-        [[nodiscard]] inline Key getKey() const;
-        [[nodiscard]] inline std::variant<DataLink, NodeLink> getContentLink() const;
-    };
 
-    class Node : public Utils::Mmaped<uint32_t> {
-    public:
-        [[nodiscard]] inline const Record* approxGet(const Key& key) const;
-    };
+        class Node : public Utils::Mmaped<Node, uint16_t> {
+        public:
+            using OffsetType = Tree::SizeType;
 
-    class Tree : public Utils::Mmaped<uint32_t> {
-    public:
-        [[nodiscard]] std::tuple<const Node*, const Record*> approxGet(const Key& key) const;
-    };
+            struct ValueMatch {
+                const ValueCollection::ValueOffsetType valueOffset;
+            protected:
+                inline explicit ValueMatch(ValueCollection::ValueOffsetType valueOffset) : valueOffset(valueOffset) {}
+                friend class Node;
+            };
 
-    class DataDump : public Utils::Mmaped<uint64_t> {
-    public:
-        [[nodiscard]] inline Blob getData(std::size_t offset) const;
+            struct DropDownMatch {
+                const Node::OffsetType nodeOffset;
+            protected:
+                inline explicit DropDownMatch(ValueCollection::ValueOffsetType nodeOffset) : nodeOffset(nodeOffset) {}
+                friend class Node;
+            };
+
+            using Match = std::variant<ValueMatch, DropDownMatch>;
+            [[nodiscard]] inline std::optional<Match> match(const Key& key) const;
+        };
+
+        [[nodiscard]] std::optional<ValueCollection::ValueOffsetType> get(const Key& key) const;
     };
 }
 
@@ -71,13 +76,38 @@ protected:
         static_cast<const std::byte>('L'),
     };
 
+    const priv::ValueCollection* valueCollection;
     const priv::Tree* tree;
-    const priv::DataDump* dataDump;
 
 public:
     DbReader(std::byte* memAddress, std::size_t memLength);
-    [[nodiscard]] std::optional<Blob> get(const Key& key) const;
-    [[nodiscard]] std::optional<Blob> get(const std::string& key) const;
+    [[nodiscard]] std::optional<Value> get(const Key& key) const;
+    [[nodiscard]] std::optional<Value> get(const std::string& key) const;
 };
 
+
+}
+
+namespace RoflDb::Utils {
+    template<>
+    inline std::size_t getReadSize<Key>(const std::byte* address) {
+        auto size = Utils::read<Key::SizeType>(address);
+        return sizeof(size) + size;
+    }
+
+    template<>
+    inline std::size_t getReadSize<Value>(const std::byte* address) {
+        auto size = Utils::read<Value::SizeType>(address);
+        return sizeof(size) + size;
+    }
+
+    template<>
+    inline Key read<Key>(const std::byte* address) {
+        return Key(address + sizeof(Key::SizeType), Utils::read<Key::SizeType>(address));
+    }
+
+    template<>
+    inline Value read<Value>(const std::byte* address) {
+        return Value(address + sizeof(Value::SizeType), Utils::read<Value::SizeType>(address));
+    }
 }

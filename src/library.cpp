@@ -1,83 +1,92 @@
 #include <cstring>
 #include <limits>
+#include <cassert>
 
 #include "../include/exceptions.h"
 #include "../include/library.h"
 
 namespace RoflDb {
 
-std::strong_ordering Key::operator<=>(const Key& other) const {
-    int cmpResult = std::memcmp(this->memAddress, other.memAddress, std::min(other.length, this->length));
-    if (cmpResult > 0) [[unlikely]] {
-        return std::strong_ordering::greater;
-    } else if (cmpResult < 0) [[likely]] {
-        return std::strong_ordering::less;
-    } else [[ unlikely ]] {
-        return this->length <=> other.length;
-    }
-}
+// Key =================================================================================================================
 
-bool Key::operator==(const Key& other) const {
-    return this->operator<=>(other) == std::strong_ordering::equal;
-}
-
-Key priv::Record::getKey() const {
-    auto payloadReader = getPayloadReader();
-    auto keyLength = payloadReader.read<KeyLengthType>();
-    return Key(payloadReader.getAddress(), keyLength);
-}
-
-std::variant<priv::DataLink, priv::NodeLink> priv::Record::getContentLink() const {
-    auto payloadReader = getPayloadReader();
-
-    auto keyLength = payloadReader.read<KeyLengthType>();
-    payloadReader.skip(keyLength);
-
-    auto type = payloadReader.read<Type>();
-    switch (type) {
-        case Type::NODE:
-            return NodeLink(payloadReader.read<typeof NodeLink::offset>());
-        case Type::DATA:
-            return DataLink(payloadReader.read<typeof DataLink::offset>());
-        default: [[unlikely]]
-            throw Exceptions::data_corrupted_error("Data corrupted or an incompatible DB format: got an unknown Node Record type");
-    }
-}
-
-const priv::Record* priv::Node::approxGet(const Key& key) const {
-    auto payloadReader = getPayloadReader();
-    while (payloadReader) [[likely]] {
-        auto* record = payloadReader.read<const Record>();
-        auto recordKey = record->getKey();
-        if (!recordKey || recordKey >= key) [[unlikely]] {
-            return record;
+    std::strong_ordering Key::operator<=>(const Key& other) const {
+        int cmpResult = std::memcmp(this->memAddress, other.memAddress, std::min(this->length, other.length));
+        if (cmpResult > 0) [[unlikely]] {
+            return std::strong_ordering::greater;
+        } else if (cmpResult < 0) [[likely]] {
+            return std::strong_ordering::less;
+        } else [[ unlikely ]] {
+            return this->length <=> other.length;
         }
     }
-    return nullptr;
-}
 
-std::tuple<const priv::Node*, const priv::Record*> priv::Tree::approxGet(const Key& key) const {
-    if (getSize() == 0) {
-        // empty tree
-        return {nullptr, nullptr};
+    bool Key::operator==(const Key& other) const {
+        return this->operator<=>(other) == std::strong_ordering::equal;
     }
-    auto* node = getPayloadReader().read<const Node>();
-    while (const Record* record = node->approxGet(key)) [[likely]] {
-        const auto contentLink = record->getContentLink();
-        if (std::holds_alternative<DataLink>(contentLink)) [[unlikely]] {
-            return {node, record};
+
+// END Key =============================================================================================================
+
+
+// priv::ValueCollection ===============================================================================================
+
+    Value priv::ValueCollection::getByOffset(ValueOffsetType offset) const {
+        return getPayloadReader().read<Value>(offset);
+    }
+
+// END priv::ValueCollection ===========================================================================================
+
+
+// priv::Tree::Node ====================================================================================================
+
+    std::optional<priv::Tree::Node::Match> priv::Tree::Node::match(const Key& searchKey) const {
+        auto payloadReader = getPayloadReader();
+
+        auto nodeKey = payloadReader.read<Key>();
+        auto keyCompareResult = searchKey.operator<=>(nodeKey);
+
+        auto valueOffset = payloadReader.read<ValueCollection::ValueOffsetType>();
+        if (keyCompareResult == std::strong_ordering::equal) [[unlikely]] {
+            return ValueMatch(valueOffset);
         }
-        node = getPayloadReader().read<const Node>(std::get<NodeLink>(contentLink).offset);
-    }
-    return {nullptr, nullptr};
-}
 
-Blob priv::DataDump::getData(std::size_t offset) const {
-    auto payloadReader = getPayloadReader();
-    payloadReader.skip(offset);
-    auto length = payloadReader.read<uint32_t>();
-    return Blob(payloadReader.skip(length), length);
-}
+        // left
+        if (!payloadReader) [[unlikely]] {
+            return std::nullopt;
+        }
+        auto leftOffset = payloadReader.read<Node::OffsetType>();
+        assert(leftOffset > 0);
+        if (keyCompareResult == std::strong_ordering::less) {
+            return DropDownMatch(leftOffset);
+        }
+
+        // right
+        if (!payloadReader) {
+            return std::nullopt;
+        }
+        auto rightOffset = payloadReader.read<Node::OffsetType>();
+        assert(rightOffset > 0);
+        return DropDownMatch(rightOffset);
+    }
+
+// END priv::Tree::Node ================================================================================================
+
+
+// priv::Tree ==========================================================================================================
+
+    std::optional<priv::ValueCollection::ValueOffsetType> priv::Tree::get(const Key& key) const {
+        std::optional<Node::OffsetType> offset = getPayloadReader().read<Node::OffsetType>();
+        while (auto optionalMatch = getPayloadReader().read<const Node*>(*offset)->match(key)) [[likely]] {
+            auto match = optionalMatch.value();
+            if (holds_alternative<Node::ValueMatch>(match)) {
+                return std::get<Node::ValueMatch>(match).valueOffset;
+            }
+            offset = std::get<Node::DropDownMatch>(match).nodeOffset;
+        }
+        return std::nullopt;
+    }
+
+// END priv::Tree ======================================================================================================
+
 
 DbReader::DbReader(std::byte* memAddress, std::size_t memLength) {
     Utils::PayloadReader payloadReader(memAddress, memLength);
@@ -90,25 +99,19 @@ DbReader::DbReader(std::byte* memAddress, std::size_t memLength) {
         throw Exceptions::magic_error("Invalid format version");
     }
 
-    tree = payloadReader.read<const priv::Tree>();
-    dataDump = payloadReader.read<const priv::DataDump>();
+    valueCollection = payloadReader.read<const priv::ValueCollection*>();
+    tree = payloadReader.read<const priv::Tree*>();
 }
 
-std::optional<Blob> DbReader::get(const Key& key) const {
-    auto [_, record] = tree->approxGet(key);
-    if (record == nullptr || static_cast<const Key>(record->getKey()) != key) [[unlikely]] {
+std::optional<Value> DbReader::get(const Key& key) const {
+    auto offset = tree->get(key);
+    if (!offset.has_value()) [[unlikely]] {
         return std::nullopt;
     }
-
-    const auto contentLink = record->getContentLink();
-    if (!std::holds_alternative<priv::DataLink>(contentLink)) [[unlikely]] {
-        return std::nullopt;
-    }
-
-    return dataDump->getData(std::get<priv::DataLink>(contentLink).offset);
+    return valueCollection->getByOffset(*offset);
 }
 
-std::optional<Blob> DbReader::get(const std::string& key) const {
+std::optional<Value> DbReader::get(const std::string& key) const {
     return get(Key((std::byte*)key.c_str(), key.size()));
 }
 
