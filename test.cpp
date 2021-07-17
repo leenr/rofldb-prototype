@@ -33,7 +33,7 @@ int main(int argc, char* argv[]) {
         if (auto res = dbReader.get(key)) {
             std::cerr << "Key '" << key << "' found: " << std::string(reinterpret_cast<const char*>(res->get()), res->size()) << "\n";
         } else {
-//            std::cerr << "Not found key '" << key << "'!\n";
+            std::cerr << "Not found key '" << key << "'!\n";
         }
     }
     return 0;
