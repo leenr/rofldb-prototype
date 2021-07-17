@@ -54,7 +54,6 @@ namespace RoflDb {
             return std::nullopt;
         }
         auto leftOffset = payloadReader.read<Node::OffsetType>();
-        assert(leftOffset > 0);
         if (keyCompareResult == std::strong_ordering::less) {
             return DropDownMatch(leftOffset);
         }
@@ -64,7 +63,6 @@ namespace RoflDb {
             return std::nullopt;
         }
         auto rightOffset = payloadReader.read<Node::OffsetType>();
-        assert(rightOffset > 0);
         return DropDownMatch(rightOffset);
     }
 
@@ -75,6 +73,10 @@ namespace RoflDb {
 
     std::optional<priv::ValueCollection::ValueOffsetType> priv::Tree::get(const Key& key) const {
         std::optional<Node::OffsetType> offset = getPayloadReader().read<Node::OffsetType>();
+        if (offset == 0) {
+            // empty tree
+            return std::nullopt;
+        }
         while (auto optionalMatch = getPayloadReader().read<const Node*>(*offset)->match(key)) [[likely]] {
             auto match = optionalMatch.value();
             if (holds_alternative<Node::ValueMatch>(match)) {
