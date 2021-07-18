@@ -12,4 +12,4 @@ It's BSD for now, but for the public release I'm currently considering to make i
 
 It does not even link to any libraries besides to glibc.
 
-If you will input something big, and don't want for it to become Public Domain, please reach out to me (although I really want to do the library Public Domain, and also I will not even consider release it with license less permissive than BSD/MIT).
+If you want to input something, and don't want for it to become Public Domain, please reach out to me (although I really want to do the library Public Domain, and also I will not even consider release it with license less permissive than BSD/MIT).
