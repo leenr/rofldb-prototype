@@ -1,6 +1,7 @@
 #include <cstring>
 #include <limits>
 #include <cassert>
+#include <vector>
 
 #include "../include/exceptions.h"
 #include "../include/library.h"
@@ -115,6 +116,10 @@ std::optional<Value> DbReader::get(const Key& key) const {
 
 std::optional<Value> DbReader::get(const std::string& key) const {
     return get(Key((std::byte*)key.c_str(), key.size()));
+}
+
+std::optional<Value> DbReader::get(const std::vector<std::byte>& key) const {
+    return get(Key(key.data(), key.size()));
 }
 
 }

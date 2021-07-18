@@ -83,6 +83,7 @@ public:
     DbReader(std::byte* memAddress, std::size_t memLength);
     [[nodiscard]] std::optional<Value> get(const Key& key) const;
     [[nodiscard]] std::optional<Value> get(const std::string& key) const;
+    [[nodiscard]] std::optional<Value> get(const std::vector<std::byte>& key) const;
 };
 
 
